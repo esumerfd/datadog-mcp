@@ -908,7 +908,7 @@ async def update_monitor(monitor_id: int, **updates) -> Dict[str, Any]:
     """
     monitor = await fetch_monitor(monitor_id)
 
-    allowed_fields = {"name", "message", "tags", "priority"}
+    allowed_fields = {"name", "message", "tags", "priority", "query"}
     for field, value in updates.items():
         if field in allowed_fields:
             monitor[field] = value

@@ -43,6 +43,10 @@ def get_tool_definition() -> Tool:
                     "maximum": 5,
                     "description": "New priority level (1-5) for the monitor.",
                 },
+                "query": {
+                    "type": "string",
+                    "description": "New query for the monitor.",
+                },
             },
             "additionalProperties": False,
             "required": ["monitor_id"],
@@ -67,6 +71,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         message = args.get("message")
         tags = args.get("tags")
         priority = args.get("priority")
+        query = args.get("query")
 
         if priority is not None and (priority < 1 or priority > 5):
             return CallToolResult(
@@ -83,6 +88,8 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
             updates["tags"] = tags
         if priority is not None:
             updates["priority"] = priority
+        if query is not None:
+            updates["query"] = query
 
         if not updates:
             return CallToolResult(

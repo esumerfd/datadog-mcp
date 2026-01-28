@@ -68,6 +68,17 @@ class TestMonitorEditToolDefinition:
         assert tags_prop["type"] == "array"
         assert tags_prop["items"]["type"] == "string"
 
+    def test_monitor_edit_query_property(self):
+        """Test query property exists with correct type and description"""
+        tool_def = monitor_edit.get_tool_definition()
+        schema = tool_def.inputSchema
+
+        assert "query" in schema["properties"]
+        query_prop = schema["properties"]["query"]
+        assert query_prop["type"] == "string"
+        assert "description" in query_prop
+        assert "query" not in schema.get("required", [])
+
 
 class TestMonitorEditRetrieval:
     """Test monitor update via update_monitor client function"""
@@ -304,6 +315,55 @@ class TestMonitorEditHandlers:
                 message="New message",
                 tags=["env:staging"],
                 priority=2,
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_monitor_edit_success_query_only(self):
+        """Test successful monitor query-only update"""
+        mock_request = MagicMock()
+        mock_request.arguments = {
+            "monitor_id": 12345,
+            "query": "avg(last_5m):avg:system.cpu.user{*} > 95",
+        }
+
+        with patch(
+            "datadog_mcp.tools.monitor_edit.update_monitor",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            mock_update.return_value = {"id": 12345}
+
+            result = await monitor_edit.handle_call(mock_request)
+
+            assert isinstance(result, CallToolResult)
+            assert result.isError is False
+            mock_update.assert_called_once_with(
+                12345, query="avg(last_5m):avg:system.cpu.user{*} > 95"
+            )
+
+    @pytest.mark.asyncio
+    async def test_handle_monitor_edit_success_query_with_other_fields(self):
+        """Test successful update of query with other fields"""
+        mock_request = MagicMock()
+        mock_request.arguments = {
+            "monitor_id": 12345,
+            "name": "Updated Monitor",
+            "query": "avg(last_10m):avg:system.memory.used{*} > 80",
+        }
+
+        with patch(
+            "datadog_mcp.tools.monitor_edit.update_monitor",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            mock_update.return_value = {"id": 12345}
+
+            result = await monitor_edit.handle_call(mock_request)
+
+            assert isinstance(result, CallToolResult)
+            assert result.isError is False
+            mock_update.assert_called_once_with(
+                12345,
+                name="Updated Monitor",
+                query="avg(last_10m):avg:system.memory.used{*} > 80",
             )
 
     @pytest.mark.asyncio
