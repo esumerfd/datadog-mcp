@@ -27,6 +27,8 @@ class TestBasicIntegration:
             "list_service_definitions",
             "get_service_definition",
             "list_monitors",
+            "get_monitor",
+            "monitor_edit",
             "list_slos",
             "dashboard_update_title",
         ]
@@ -207,7 +209,7 @@ class TestModuleStructure:
             list_metrics, get_metric_fields, get_metric_field_values,
             list_pipelines, get_fingerprints,
             list_service_definitions, get_service_definition,
-            list_monitors, list_slos, dashboard_update_title
+            list_monitors, get_monitor, monitor_edit, list_slos, dashboard_update_title
         )
 
         # All imports should succeed
@@ -223,7 +225,7 @@ class TestModuleStructure:
             "get_metric_fields", "get_metric_field_values",
             "list_pipelines", "get_fingerprints",
             "list_service_definitions", "get_service_definition",
-            "list_monitors", "list_slos", "dashboard_update_title"
+            "list_monitors", "get_monitor", "monitor_edit", "list_slos", "dashboard_update_title"
         ]
 
         for module_name in tool_modules:
@@ -255,6 +257,82 @@ class TestNewToolsIntegration:
             assert len(result) >= 1
             assert isinstance(result[0], TextContent)
             assert "Test Monitor" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_get_monitor_integration(self):
+        """Test get_monitor tool integration"""
+        from unittest.mock import AsyncMock
+
+        with patch('datadog_mcp.tools.get_monitor.fetch_monitor', new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = {
+                "id": 12345,
+                "name": "Test Monitor",
+                "type": "metric alert",
+                "overall_state": "OK",
+                "priority": 3,
+                "query": "avg(last_5m):avg:system.cpu.user{*} > 90",
+                "message": "CPU is high",
+                "tags": ["env:prod"]
+            }
+
+            result = await handle_call_tool("get_monitor", {"monitor_id": 12345})
+
+            assert isinstance(result, list)
+            assert len(result) >= 1
+            assert isinstance(result[0], TextContent)
+            assert "Test Monitor" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_monitor_edit_integration(self):
+        """Test monitor_edit tool integration"""
+        from unittest.mock import AsyncMock
+
+        with patch('datadog_mcp.tools.monitor_edit.update_monitor', new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = {"id": 12345, "name": "Updated Monitor"}
+
+            result = await handle_call_tool("monitor_edit", {
+                "monitor_id": 12345,
+                "name": "Updated Monitor"
+            })
+
+            assert isinstance(result, list)
+            assert len(result) >= 1
+            assert isinstance(result[0], TextContent)
+            assert "12345" in result[0].text
+            assert "updated" in result[0].text.lower()
+
+    @pytest.mark.asyncio
+    async def test_monitor_edit_query_integration(self):
+        """Test monitor_edit tool with query parameter"""
+        from unittest.mock import AsyncMock
+
+        with patch('datadog_mcp.tools.monitor_edit.update_monitor', new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = {"id": 12345}
+
+            result = await handle_call_tool("monitor_edit", {
+                "monitor_id": 12345,
+                "query": 'logs("@level:ERROR env:prod").index("*").rollup("count").last("30m") > 0'
+            })
+
+            assert isinstance(result, list)
+            assert len(result) >= 1
+            assert isinstance(result[0], TextContent)
+            assert "12345" in result[0].text
+            assert "updated" in result[0].text.lower()
+            mock_update.assert_called_once_with(
+                12345,
+                query='logs("@level:ERROR env:prod").index("*").rollup("count").last("30m") > 0'
+            )
+
+    @pytest.mark.asyncio
+    async def test_monitor_edit_missing_monitor_id(self):
+        """Test monitor_edit with missing required monitor_id"""
+        result = await handle_call_tool("monitor_edit", {"name": "Test"})
+
+        assert isinstance(result, list)
+        assert len(result) >= 1
+        assert isinstance(result[0], TextContent)
+        assert "monitor_id" in result[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_list_slos_integration(self):
@@ -374,6 +452,42 @@ class TestNewToolsParameters:
 
         assert "limit" in properties
         assert "offset" in properties
+
+    def test_get_monitor_has_required_params(self):
+        """Test get_monitor has required parameters"""
+        tool_def = TOOLS["get_monitor"]["definition"]()
+        schema = tool_def.inputSchema
+
+        assert "required" in schema
+        assert "monitor_id" in schema["required"]
+        properties = schema.get("properties", {})
+        assert "monitor_id" in properties
+        assert properties["monitor_id"]["type"] == "integer"
+
+    def test_monitor_edit_has_required_params(self):
+        """Test monitor_edit has required parameters"""
+        tool_def = TOOLS["monitor_edit"]["definition"]()
+        schema = tool_def.inputSchema
+
+        assert "required" in schema
+        assert "monitor_id" in schema["required"]
+
+    def test_monitor_edit_has_query_param(self):
+        """Test monitor_edit has query parameter for updating monitor queries"""
+        tool_def = TOOLS["monitor_edit"]["definition"]()
+        properties = tool_def.inputSchema.get("properties", {})
+
+        assert "query" in properties
+        assert properties["query"]["type"] == "string"
+
+    def test_monitor_edit_has_all_update_fields(self):
+        """Test monitor_edit has all expected update fields"""
+        tool_def = TOOLS["monitor_edit"]["definition"]()
+        properties = tool_def.inputSchema.get("properties", {})
+
+        expected_fields = ["monitor_id", "name", "message", "tags", "priority", "query"]
+        for field in expected_fields:
+            assert field in properties, f"monitor_edit missing {field} parameter"
 
 
 if __name__ == "__main__":
